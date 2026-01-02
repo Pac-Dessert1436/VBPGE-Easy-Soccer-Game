@@ -14,7 +14,7 @@ A current limitation is the absence of the offside rule. While critical in real 
 ## Controls
 - Player 1 (Blue team): W, A, S, D to move; 'E' to switch players
 - Player 2 (Red team): Arrow keys to move; Spacebar to switch players
-- Hotkeys: 'P' to pause; 'ESC' to quit
+- Hotkeys: 'P' to pause or resume; 'ESC' to quit
 
 ## Prerequisites
 - [vbPixelGameEngine](https://github.com/DualBrain/vbPixelGameEngine)

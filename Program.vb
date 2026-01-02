@@ -304,7 +304,8 @@ Public NotInheritable Class Program
 
             Case GameState.Paused
                 DrawGame(elapsedTime)
-                DrawString(FromCenter(-30, 10), "PAUSED", Presets.Snow)
+                DrawString(FromCenter(-80, -20), "GAME PAUSED", Presets.Beige, 2)
+                DrawString(FromCenter(-105, 10), "PRESS ""P"" AGAIN TO CONTINUE", Presets.Beige)
                 SpriteSheet.PauseAllAnimations = True
                 If GetKey(Key.P).Pressed Then m_gameState = GameState.Playing
 
