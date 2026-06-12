@@ -1,5 +1,3 @@
-Option Strict On
-Option Infer On
 Imports VbPixelGameEngine
 
 Public NotInheritable Class Program
@@ -38,6 +36,7 @@ Public NotInheritable Class Program
         With New Program
             ' Enlarge window for the 11 players of the both team
             If .Construct(screenW:=700, screenH:=450, fullScreen:=True) Then .Start()
+            .DisposeResources()
         End With
     End Sub
 
@@ -156,7 +155,7 @@ Public NotInheritable Class Program
     Private Function GetInitialPosition _
             (teamIdx As Integer, playerIdx As Integer, posType As PlayerPosition) _
             As (X As Single, Y As Single)
-        ' Team direction: Blue team left half (attack from left to right), 
+        ' Team direction: Blue team left half (attack from left to right),
         '                 red team right half (attack from right to left)
         Dim isBlueTeam = teamIdx = 0
         Dim baseDepth = If(isBlueTeam, 0.2F, 0.8F) ' Base depth ratio (0=leftmost, 1=rightmost)
@@ -645,5 +644,12 @@ Public NotInheritable Class Program
         )
 
         If nearestIdx <> -1 Then SwitchControl(team, nearestIdx)
+    End Sub
+
+    Public Sub DisposeResources()
+        bgmMainTheme?.Dispose()
+        sndKick?.Dispose()
+        sndGoal?.Dispose()
+        sndWhistle?.Dispose()
     End Sub
 End Class

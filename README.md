@@ -18,10 +18,10 @@ A current limitation is the absence of the offside rule. While critical in real 
 
 ## Prerequisites
 - [vbPixelGameEngine](https://github.com/DualBrain/vbPixelGameEngine)
-- [.NET SDK](https://dotnet.microsoft.com/download): version 9.0 or later
+- [.NET SDK](https://dotnet.microsoft.com/download): version **10.0** or later
 - Required NuGet packages:
-  - NAudio 2.2.1
-  - System.Drawing.Common 9.0.0+
+  - NAudio 2.3.0
+  - System.Drawing.Common 10.0.0+
 
 ## Installation
 1. Clone the repository and navigate to the project directory:

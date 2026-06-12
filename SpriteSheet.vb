@@ -1,8 +1,6 @@
-Option Strict On
-Option Infer On
 Imports VbPixelGameEngine
 
-Public Class SpriteSheet
+Public NotInheritable Class SpriteSheet
     Implements ICloneable
 
     Private ReadOnly sheet As Sprite, frameW As Integer, frameH As Integer

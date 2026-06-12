@@ -1,11 +1,12 @@
-Option Strict On
-Option Infer On
 Imports NAudio.Wave
 
-Public Class SoundPlayer
+Public NotInheritable Class SoundPlayer
+    Implements IDisposable
+
     Private ReadOnly reader As AudioFileReader
     Private ReadOnly waveOut As WaveOutEvent
     Private isLooping As Boolean = False
+    Private disposedValue As Boolean
 
     Public Sub New(filename As String)
         reader = New AudioFileReader(filename)
@@ -45,15 +46,25 @@ Public Class SoundPlayer
         End If
     End Sub
 
-    Protected Overrides Sub Finalize()
-        Try
-            If waveOut IsNot Nothing Then
-                RemoveHandler waveOut.PlaybackStopped, AddressOf OnPlaybackStopped
+    Private Sub Dispose(disposing As Boolean)
+        If Not disposedValue Then
+            If disposing Then
+                If waveOut IsNot Nothing Then
+                    RemoveHandler waveOut.PlaybackStopped, AddressOf OnPlaybackStopped
+                End If
+                waveOut?.Dispose()
+                reader?.Dispose()
             End If
-            waveOut?.Dispose()
-            reader?.Dispose()
-        Finally
-            MyBase.Finalize()
-        End Try
+
+            ' TODO: free unmanaged resources (unmanaged objects) and override finalizer
+            ' TODO: set large fields to null
+            disposedValue = True
+        End If
+    End Sub
+
+    Public Sub Dispose() Implements IDisposable.Dispose
+        ' Do not change this code. Put cleanup code in 'Dispose(disposing As Boolean)' method
+        Dispose(disposing:=True)
+        GC.SuppressFinalize(Me)
     End Sub
 End Class
