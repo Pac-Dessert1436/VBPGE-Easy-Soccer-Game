@@ -41,6 +41,12 @@ Public Module Essentials
         Up = 3
         Down = 4
     End Enum
+
+    Public Enum TeamID As Byte
+        Ball = 0
+        Blue = 1
+        Red = 2
+    End Enum
 End Module
 
 Public NotInheritable Class Actor
@@ -49,14 +55,14 @@ Public NotInheritable Class Actor
     Public Property Position As Vf2d
     Public Property Velocity As Vf2d
     Public Property IsPlayerControlled As Boolean
-    Public Property Team As Integer ' 0 for blue team and 1 for red team
+    Public Property Team As TeamID
     Public Property CurrDirection As Direction = Direction.Right
     Public Property IsMoving As Boolean = False
     Public Property PositionType As PlayerPosition
     Public Property GoalkeeperYRange As (Min As Single, Max As Single)
     Public Property HomePosition As Vf2d
 
-    Public Sub New(spriteSheet As SpriteSheet, charaName As String, team As Integer,
+    Public Sub New(spriteSheet As SpriteSheet, charaName As String, team As TeamID,
                    positionType As PlayerPosition)
         Me.SpriteSheet = spriteSheet
         Me.CharaName = charaName
@@ -68,13 +74,13 @@ Public NotInheritable Class Actor
     Public ReadOnly Property Bounds As RectF
         Get
             ' Soccer ball is of 5x5 size, whereas players are 10x15
-            Return New RectF(Position, If(Team = -1, New Vi2d(5, 5), New Vi2d(10, 15)))
+            Return New RectF(Position, If(Team = TeamID.Ball, New Vi2d(5, 5), New Vi2d(10, 15)))
         End Get
     End Property
 
     Public Function IsForwardPass(targetPos As Vf2d) As Boolean
         ' Blue team's forward pass is to the right; the red team's is to the left
-        Return If(Team = 0, targetPos.x > Position.x, targetPos.x < Position.x)
+        Return If(Team = TeamID.Blue, targetPos.x > Position.x, targetPos.x < Position.x)
     End Function
 End Class
 
@@ -123,7 +129,7 @@ Public NotInheritable Class AIController
     End Sub
 
     Private Sub UpdateGoalkeeper()
-        Dim fixedX = If(m_player.Team = 0, FIELD_LEFT + 10, FIELD_RIGHT - 25)
+        Dim fixedX = If(m_player.Team = TeamID.Blue, FIELD_LEFT + 10, FIELD_RIGHT - 25)
 
         If IsBallInPenaltyArea() Then
             TargetPos = New Vf2d(fixedX, m_ball.Position.y)
@@ -185,10 +191,10 @@ Public NotInheritable Class AIController
             Math.Clamp(targetPos.y, FIELD_TOP + 10, FIELD_BOTTOM - 10)
         )
 
-        TargetPos = targetPos
+        targetPos = targetPos
 
-        Dim dir = (TargetPos - m_player.Position).Norm()
-        Dim distToTarget = (TargetPos - m_player.Position).Mag()
+        Dim dir = (targetPos - m_player.Position).Norm()
+        Dim distToTarget = (targetPos - m_player.Position).Mag()
 
         If distToTarget > 5 Then
             Dim speed = PLAYER_SPEED * 0.85F
@@ -231,17 +237,17 @@ Public NotInheritable Class AIController
 
         targetPos = AvoidTeammates(targetPos)
 
-        Dim midfieldLeft = If(m_player.Team = 0, FIELD_LEFT + 120, FIELD_LEFT + 280)
-        Dim midfieldRight = If(m_player.Team = 0, FIELD_RIGHT - 280, FIELD_RIGHT - 120)
+        Dim midfieldLeft = If(m_player.Team = TeamID.Blue, FIELD_LEFT + 120, FIELD_LEFT + 280)
+        Dim midfieldRight = If(m_player.Team = TeamID.Blue, FIELD_RIGHT - 280, FIELD_RIGHT - 120)
         targetPos = New Vf2d(
             Math.Clamp(targetPos.x, midfieldLeft, midfieldRight),
             Math.Clamp(targetPos.y, FIELD_TOP + 30, FIELD_BOTTOM - 30)
         )
 
-        TargetPos = targetPos
+        targetPos = targetPos
 
-        Dim dir = (TargetPos - m_player.Position).Norm()
-        Dim distToTarget = (TargetPos - m_player.Position).Mag()
+        Dim dir = (targetPos - m_player.Position).Norm()
+        Dim distToTarget = (targetPos - m_player.Position).Mag()
 
         If distToTarget > 5 Then
             Dim speed = PLAYER_SPEED * 0.95F
@@ -278,7 +284,7 @@ Public NotInheritable Class AIController
             Dim interceptPoint = CalculateInterceptPoint()
             targetPos = If(interceptPoint <> Nothing, interceptPoint, m_ball.Position)
         Else
-            Dim strikerX = If(m_player.Team = 0, FIELD_RIGHT - PENALTY_AREA_WIDTH - 15,
+            Dim strikerX = If(m_player.Team = TeamID.Blue, FIELD_RIGHT - PENALTY_AREA_WIDTH - 15,
                               FIELD_LEFT + PENALTY_AREA_WIDTH + 15)
             Dim strikerY = m_ball.Position.y
             targetPos = New Vf2d(strikerX, strikerY)
@@ -290,10 +296,10 @@ Public NotInheritable Class AIController
             Math.Clamp(targetPos.y, FIELD_TOP + 15, FIELD_BOTTOM - 15)
         )
 
-        TargetPos = targetPos
+        targetPos = targetPos
 
-        Dim dir = (TargetPos - m_player.Position).Norm()
-        Dim distToTarget = (TargetPos - m_player.Position).Mag()
+        Dim dir = (targetPos - m_player.Position).Norm()
+        Dim distToTarget = (targetPos - m_player.Position).Mag()
 
         If distToTarget > 5 Then
             Dim speed = PLAYER_SPEED * 1.05F
@@ -306,7 +312,7 @@ Public NotInheritable Class AIController
 
         If IsValidPass AndAlso (m_player.Position - m_ball.Position).Mag < KICK_RANGE Then
             Dim distToAttackTarget = (m_ball.Position - m_attackTarget).Mag()
-            
+
             If distToAttackTarget < 150 Then
                 m_ball.Velocity = (m_attackTarget - m_ball.Position).Norm() * BALL_SPEED * 1.1F
             Else
@@ -356,7 +362,7 @@ Public NotInheritable Class AIController
     Private Function IsBallInOwnHalf() As Boolean
         Dim fieldCenterX = (FIELD_LEFT + FIELD_RIGHT) / 2.0F
         Return If(
-            m_player.Team = 0,
+            m_player.Team = TeamID.Blue,
             m_ball.Position.x < fieldCenterX,
             m_ball.Position.x > fieldCenterX
         )
@@ -364,10 +370,10 @@ Public NotInheritable Class AIController
 
     Private Function IsBallInPenaltyArea() As Boolean
         Dim penaltyLeft = If(
-            m_player.Team = 0, FIELD_LEFT - 20, FIELD_RIGHT - PENALTY_AREA_WIDTH - 20
+            m_player.Team = TeamID.Blue, FIELD_LEFT - 20, FIELD_RIGHT - PENALTY_AREA_WIDTH - 20
         ) ' Expand left boundary
         Dim penaltyRight = If(
-            m_player.Team = 0, FIELD_LEFT + PENALTY_AREA_WIDTH + 20, FIELD_RIGHT + 20
+            m_player.Team = TeamID.Blue, FIELD_LEFT + PENALTY_AREA_WIDTH + 20, FIELD_RIGHT + 20
         ) ' Expand right boundary
         Return m_ball.Position.x >= penaltyLeft AndAlso
                m_ball.Position.x <= penaltyRight AndAlso

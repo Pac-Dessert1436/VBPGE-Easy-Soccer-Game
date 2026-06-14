@@ -1,5 +1,3 @@
-Option Strict On
-Option Infer On
 Imports VbPixelGameEngine
 
 Public Structure RectF

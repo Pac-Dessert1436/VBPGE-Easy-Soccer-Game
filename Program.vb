@@ -64,7 +64,7 @@ Public NotInheritable Class Program
 
     Private Shared Sub SwitchControl(team As Actor(), idx As Integer)
         For i As Integer = 0 To UBound(team)
-            team(i).IsPlayerControlled = (i = idx)
+            team(i).IsPlayerControlled = i = idx
         Next i
         team(idx).Velocity = New Vf2d(0, 0)
         team(idx).IsMoving = False
@@ -99,15 +99,15 @@ Public NotInheritable Class Program
         End With
 
         ' Initialize soccer ball
-        m_soccer = New Actor(ssSoccerBall, "default", -1, PlayerPosition.Striker) With {
+        m_soccer = New Actor(ssSoccerBall, "default", TeamID.Ball, PlayerPosition.Striker) With {
             .Position = FromCenter(0, 0),
             .HomePosition = FromCenter(0, 0)
         }
 
         ' Initialize team players
         ' (4-4-2 formation: 1 goalkeeper + 4 defenders + 4 midfielders + 2 strikers)
-        InitTeamPlayers(m_bluePlayers, "blue_player", 0)
-        InitTeamPlayers(m_redPlayers, "red_player", 1)
+        InitTeamPlayers(m_bluePlayers, "blue_player", TeamID.Blue)
+        InitTeamPlayers(m_redPlayers, "red_player", TeamID.Red)
 
         ' Initialize AI controllers
         InitAIControllers()
@@ -117,7 +117,7 @@ Public NotInheritable Class Program
     End Function
 
     ' Initialize team players (4-4-2 formation)
-    Private Sub InitTeamPlayers(team As Actor(), charaName As String, teamIdx As Integer)
+    Private Sub InitTeamPlayers(team As Actor(), charaName As String, teamId As TeamID)
         ' Position assignment are based on their indices
         ' 0-3：Defender | 4-7：Midfielder | 8-9：Striker | 10：Goalkeeper
         Dim positions = New PlayerPosition() {
@@ -129,10 +129,10 @@ Public NotInheritable Class Program
 
         ' Calculate initial positions
         For i As Integer = 0 To team.Length - 1
-            team(i) = New Actor(ssSoccerPlayer.DeepCopy, charaName, teamIdx, positions(i))
-            With GetInitialPosition(teamIdx, i, positions(i))
-                team(i).Position = New Vf2d(.X, .Y)
-                team(i).HomePosition = New Vf2d(.X, .Y) ' Record tactical initial position
+            team(i) = New Actor(ssSoccerPlayer.DeepCopy, charaName, teamId, positions(i))
+            With GetInitialPosition(teamId, i, positions(i))
+                team(i).Position = New Vf2d(.x, .y)
+                team(i).HomePosition = New Vf2d(.x, .y) ' Record tactical initial position
             End With
 
             ' Initialize goalkeeper properties
@@ -153,46 +153,46 @@ Public NotInheritable Class Program
     Private ReadOnly Property FieldCenterY As Single = FIELD_TOP + FieldHeight \ 2
 
     Private Function GetInitialPosition _
-            (teamIdx As Integer, playerIdx As Integer, posType As PlayerPosition) _
-            As (X As Single, Y As Single)
-        ' Team direction: Blue team left half (attack from left to right),
-        '                 red team right half (attack from right to left)
-        Dim isBlueTeam = teamIdx = 0
+            (teamId As TeamID, playerIdx As Integer, posType As PlayerPosition) As Vf2d
+        ' Team direction: 
+        '  - Blue team left half: attack from left to right
+        '  - Red team right half: attack from right to left
+        Dim isBlueTeam As Boolean = teamId = TeamID.Blue
         Dim baseDepth = If(isBlueTeam, 0.2F, 0.8F) ' Base depth ratio (0=leftmost, 1=rightmost)
 
         Select Case posType
             Case PlayerPosition.Goalkeeper
                 ' Goalkeeper: Directly in front of goal center, close to goal line
                 Dim goalX = If(isBlueTeam, FIELD_LEFT + 10, FIELD_RIGHT - 25)
-                Return (goalX, FieldCenterY) ' Strictly center in goal
+                Return New Vf2d(goalX, FieldCenterY) ' Strictly center in goal
 
             Case PlayerPosition.Defender
                 ' 4 defenders: Parallel positioning, evenly cover field width (1/5 from bottom)
                 Dim depth = If(posType = PlayerPosition.Defender, 0.15F, 0.3F)
-                Dim x = FIELD_LEFT + FieldWidth * (If(isBlueTeam, depth, 1 - depth))
-                Dim yStep = (FieldHeight * 2 / 3.0F) / 3.0F
+                Dim x = FIELD_LEFT + FieldWidth * If(isBlueTeam, depth, 1 - depth)
+                Dim yStep = FieldHeight * 2 / 3.0F / 3.0F
                 Dim y = FIELD_TOP + FieldHeight / 6.0F + yStep * playerIdx
-                Return (x, y)
+                Return New Vf2d(x, y)
 
             Case PlayerPosition.Midfielder
                 ' 4 midfielders: In front of defenders, evenly distribute horizontally (expand spacing)
                 Dim depth = 0.3F ' Front and back position (defenders' front)
-                Dim x = FIELD_LEFT + FieldWidth * (If(isBlueTeam, depth, 1 - depth))
-                Dim yStep = (FieldHeight * 2 / 3.0F) / 3.0F
+                Dim x = FIELD_LEFT + FieldWidth * If(isBlueTeam, depth, 1 - depth)
+                Dim yStep = FieldHeight * 2 / 3.0F / 3.0F
                 Dim yOffset = If(playerIdx Mod 2 = 0, -5, 5)
                 Dim y = FIELD_TOP + FieldHeight / 6.0F + yStep * (playerIdx - 4) + yOffset
-                Return (x, y)
+                Return New Vf2d(x, y)
 
             Case PlayerPosition.Striker
                 ' 2 strikers: Close to midfield, staggered positions
                 Dim depth = 0.6F
-                Dim x = FIELD_LEFT + FieldWidth * (If(isBlueTeam, depth, 1 - depth))
+                Dim x = FIELD_LEFT + FieldWidth * If(isBlueTeam, depth, 1 - depth)
                 Dim yOffset = If(playerIdx = 8, -FieldHeight / 8.0F, FieldHeight / 8.0F)
                 Dim y = FieldCenterY + yOffset
-                Return (x, y)
+                Return New Vf2d(x, y)
 
             Case Else
-                Return (ScreenWidth \ 2, ScreenHeight \ 2)
+                Return New Vf2d(ScreenWidth \ 2, ScreenHeight \ 2)
         End Select
     End Function
 
@@ -389,8 +389,8 @@ Public NotInheritable Class Program
 
         ' For goalkeeper: Limit movement to Y-axis in the penalty area only
         If player.PositionType = PlayerPosition.Goalkeeper Then
-            Dim penaltyLeft = If(player.Team = 0, FIELD_LEFT, FIELD_RIGHT - PENALTY_AREA_WIDTH)
-            Dim penaltyRight = If(player.Team = 0, FIELD_LEFT + PENALTY_AREA_WIDTH, FIELD_RIGHT)
+            Dim penaltyLeft = If(player.Team = TeamID.Blue, FIELD_LEFT, FIELD_RIGHT - PENALTY_AREA_WIDTH)
+            Dim penaltyRight = If(player.Team = TeamID.Blue, FIELD_LEFT + PENALTY_AREA_WIDTH, FIELD_RIGHT)
 
             If GetKey(upKey).Held Then inputDir.y -= 1
             If GetKey(downKey).Held Then inputDir.y += 1
@@ -621,7 +621,7 @@ Public NotInheritable Class Program
 
             ' Mark current players
             If player.IsPlayerControlled Then
-                Dim color = If(player.Team = 0, Presets.Cyan, Presets.Red)
+                Dim color = If(player.Team = TeamID.Blue, Presets.Cyan, Presets.Red)
                 Dim pos = player.Position + New Vi2d(5, -5)
                 FillTriangle(pos, pos + New Vi2d(-3, -3), pos + New Vi2d(3, -3), color)
             End If
