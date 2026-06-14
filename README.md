@@ -2,6 +2,14 @@
 
 ![](screenshot.png)
 
+> **June 14 2026 Latest Update**: Significant AI movement improvements! Fixed buggy behavior including:
+> - Goalkeeper movement now properly constrained to goal area
+> - Defenders smarter about intercepting opponents and maintaining position
+> - Midfielders better balanced between defense and attack support
+> - Strikers now predict ball trajectory for better positioning
+> - Improved teammate avoidance to prevent clustering and jittering
+> - Smoother ball physics with proper stopping conditions
+
 ## Description
 This is a simple soccer game built with `vbPixelGameEngine`. It's a 2D game where two players control soccer players to compete for the ball and score goals against each other. *__The objective is to be the first to score 3 goals, regardless of the game's duration.__*
 
@@ -9,7 +17,7 @@ The project uses the experimental `SpriteSheet` class for loading and managing g
 
 Except for the soccer field image downloaded from the Internet (and later adjusted using Aseprite), all in-game visuals are handcrafted with Aseprite. The background music is "Route 38" from the *Pokémon HeartGold & Pokémon SoulSilver Super Music Collection*, while sound effects are sourced from the original NES Soccer game (except the scoring sound which is actually from the Game Gear version of _Sonic the Hedgehog 2_).
 
-A current limitation is the absence of the offside rule. While critical in real soccer, implementing it proved more complex than initially anticipated.
+**Offside Rule**: The offside rule has been intentionally omitted. While a fundamental part of real soccer, implementing it requires significant complexity: tracking player positions relative to the ball and second-last defender at the moment of each pass, handling edge cases (throw-ins, corners, goal kicks), and managing the visual/audio feedback for offside calls. _For this casual 2D game, the simpler gameplay without offside provides a more accessible and fast-paced experience._
 
 ## Controls
 - Player 1 (Blue team): W, A, S, D to move; 'E' to switch players

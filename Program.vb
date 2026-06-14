@@ -199,26 +199,20 @@ Public NotInheritable Class Program
     Private Sub InitAIControllers()
         m_aiControllers.Clear()
 
-        ' Blue team AI (exclude current controlled player)
         For i As Integer = 0 To m_bluePlayers.Length - 1
-            If i <> m_blueControlledIdx Then
-                m_aiControllers.Add(New AIController(
-                    m_bluePlayers(i), m_soccer,
-                    m_bluePlayers.ToList(), m_redPlayers.ToList(),
-                    m_redGoalPosition, m_blueGoalPosition
-                ))
-            End If
+            m_aiControllers.Add(New AIController(
+                m_bluePlayers(i), m_soccer,
+                m_bluePlayers.ToList(), m_redPlayers.ToList(),
+                m_redGoalPosition, m_blueGoalPosition
+            ))
         Next i
 
-        ' Red team AI (exclude current controlled player)
         For i As Integer = 0 To m_redPlayers.Length - 1
-            If i <> m_redControlledIdx Then
-                m_aiControllers.Add(New AIController(
-                    m_redPlayers(i), m_soccer,
-                    m_redPlayers.ToList(), m_bluePlayers.ToList(),
-                    m_blueGoalPosition, m_redGoalPosition
-                ))
-            End If
+            m_aiControllers.Add(New AIController(
+                m_redPlayers(i), m_soccer,
+                m_redPlayers.ToList(), m_bluePlayers.ToList(),
+                m_blueGoalPosition, m_redGoalPosition
+            ))
         Next i
     End Sub
 
@@ -480,15 +474,18 @@ Public NotInheritable Class Program
 
     Private Sub UpdateBall(dt As Single)
         With m_soccer
-            .Velocity *= 0.97F
+            .Velocity *= 0.985F
             .Position += .Velocity * dt
             Dim newVel = .Velocity, newPos = .Position
 
-            ' Apply the field boundary constraints for the soccer ball (Y-axis)
-            ' For ball going out of field from left or right, change to goal kick mode
             If .Position.y < FIELD_TOP OrElse .Position.y > FIELD_BOTTOM Then
-                newVel.y *= -0.8F
-                newPos.y = Math.Clamp(.Position.y, FIELD_TOP, FIELD_BOTTOM)
+                newVel.y *= -0.75F
+                newVel.x *= 0.9F
+                newPos.y = Math.Clamp(.Position.y, FIELD_TOP + 2, FIELD_BOTTOM - 2)
+            End If
+
+            If .Velocity.Mag() < 0.5F Then
+                .Velocity = New Vf2d(0, 0)
             End If
 
             .Velocity = newVel

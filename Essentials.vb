@@ -43,7 +43,7 @@ Public Module Essentials
     End Enum
 End Module
 
-Friend Class Actor
+Public NotInheritable Class Actor
     Public ReadOnly Property SpriteSheet As SpriteSheet
     Public ReadOnly Property CharaName As String
     Public Property Position As Vf2d
@@ -78,7 +78,7 @@ Friend Class Actor
     End Function
 End Class
 
-Friend Class AIController
+Public NotInheritable Class AIController
     Private ReadOnly m_player As Actor
     Private ReadOnly m_ball As Actor
     Private ReadOnly m_teammates As List(Of Actor)
@@ -123,41 +123,27 @@ Friend Class AIController
     End Sub
 
     Private Sub UpdateGoalkeeper()
-        ' Restrict to own penalty area
-        Dim penaltyAreaLeft = If(
-            m_player.Team = 0, FIELD_LEFT, FIELD_RIGHT - PENALTY_AREA_WIDTH
-        )
-        Dim penaltyAreaRight = If(
-            m_player.Team = 0, FIELD_LEFT + PENALTY_AREA_WIDTH, FIELD_RIGHT
-        )
+        Dim fixedX = If(m_player.Team = 0, FIELD_LEFT + 10, FIELD_RIGHT - 25)
 
-        ' Prioritize saving the ball when ball is in penalty area
         If IsBallInPenaltyArea() Then
-            TargetPos = m_ball.Position ' Move directly toward ball
+            TargetPos = New Vf2d(fixedX, m_ball.Position.y)
         Else
-            ' Otherwise return to center of goal line
-            TargetPos = New Vf2d(
-                If(m_player.Team = 0, FIELD_LEFT + 10, FIELD_RIGHT - 10),
-                (m_player.GoalkeeperYRange.Min + m_player.GoalkeeperYRange.Max) / 2
-            )
+            TargetPos = New Vf2d(fixedX, (m_player.GoalkeeperYRange.Min + m_player.GoalkeeperYRange.Max) / 2)
         End If
 
-        ' Move to target position (Y axis priority)
         Dim dir = (TargetPos - m_player.Position).Norm()
-        dir.x = 0 ' Force X direction speed to 0, allow Y axis movement
-        m_player.Velocity = dir * PLAYER_SPEED ' Only Y direction has speed
+        dir.x = 0
+        m_player.Velocity = dir * PLAYER_SPEED * 0.8F
 
-        ' Update state (only check Y direction movement)
         If Math.Abs(dir.y) > 0.1F Then
             m_player.IsMoving = True
             m_player.CurrDirection = If(dir.y > 0, Direction.Down, Direction.Up)
         Else
             m_player.IsMoving = False
+            m_player.Velocity = New Vf2d(0, 0)
         End If
 
-        ' Force fixed X position (consistent with initial position)
-        Dim fixedX = If(m_player.Team = 0, FIELD_LEFT + 10, FIELD_RIGHT - 25)
-        m_player.Position = New Vf2d(fixedX, m_player.Position.y)
+        m_player.Position = New Vf2d(fixedX, Math.Clamp(m_player.Position.y, m_player.GoalkeeperYRange.Min, m_player.GoalkeeperYRange.Max))
     End Sub
 
     Private ReadOnly Property IsValidPass As Boolean
@@ -168,96 +154,116 @@ Friend Class AIController
 
     Private Sub UpdateDefender()
         Dim nearestOpponent = Aggregate o In m_opponents
+                                  Where o.PositionType <> PlayerPosition.Goalkeeper
                                   Order By (o.Position - m_ball.Position).Mag()
                                       Into FirstOrDefault()
 
-        If nearestOpponent IsNot Nothing AndAlso
-              (nearestOpponent.Position - m_ball.Position).Mag() < 50 Then
-            TargetPos = nearestOpponent.Position ' Prior intercept opponent
-            Exit Sub
+        Dim targetPos As Vf2d
+
+        If nearestOpponent IsNot Nothing Then
+            Dim distToBall = (nearestOpponent.Position - m_ball.Position).Mag()
+            If distToBall < 40 Then
+                targetPos = m_ball.Position + (nearestOpponent.Position - m_ball.Position).Norm() * 20
+            Else
+                targetPos = If(
+                    IsBallInOwnHalf(),
+                    m_ball.Position + (m_defendTarget - m_ball.Position).Norm() * 35.0F,
+                    m_player.HomePosition
+                )
+            End If
+        Else
+            targetPos = If(
+                IsBallInOwnHalf(),
+                m_ball.Position + (m_defendTarget - m_ball.Position).Norm() * 35.0F,
+                m_player.HomePosition
+            )
         End If
 
-        ' Prioritize defensive support for ball in own half field;
-        ' return to home position otherwise
-        TargetPos = If(
-            IsBallInOwnHalf(),
-            m_ball.Position + (m_defendTarget - m_ball.Position).Norm() * 40.0F,
-            m_player.HomePosition
+        targetPos = AvoidTeammates(targetPos)
+        targetPos = New Vf2d(
+            Math.Clamp(targetPos.x, FIELD_LEFT + 10, FIELD_RIGHT - 20),
+            Math.Clamp(targetPos.y, FIELD_TOP + 10, FIELD_BOTTOM - 10)
         )
-        ' Avoid teammates
-        TargetPos = AvoidTeammates(TargetPos)
 
-        ' Movement logic for defenders (at medium speed)
+        TargetPos = targetPos
+
         Dim dir = (TargetPos - m_player.Position).Norm()
-        m_player.Velocity = dir * (PLAYER_SPEED * 0.9F)
-        UpdateMovementState(dir)
+        Dim distToTarget = (TargetPos - m_player.Position).Mag()
 
-        ' Close kick (prioritize evasion)
+        If distToTarget > 5 Then
+            Dim speed = PLAYER_SPEED * 0.85F
+            m_player.Velocity = dir * speed
+            UpdateMovementState(dir)
+        Else
+            m_player.Velocity = New Vf2d(0, 0)
+            m_player.IsMoving = False
+        End If
+
         If IsValidPass AndAlso (m_player.Position - m_ball.Position).Mag < KICK_RANGE Then
-            ' Screen out distance suitable targets (exclude too near and too far)
             Dim validTargets = From p In m_teammates
+                               Where p.PositionType <> PlayerPosition.Goalkeeper
                                Let dist = (p.Position - m_player.Position).Mag()
-                               Where dist > 30.0F AndAlso dist < 150.0F
-                               Select p ' Select 30-150 pixels within range
+                               Where dist > 30.0F AndAlso dist < 180.0F
+                               Select p
 
-            ' From valid targets find best pass object (nearest to opponent's goal)
             Dim bestFit = Aggregate p In validTargets
                               Order By (m_attackTarget - p.Position).Mag()
                                   Into FirstOrDefault()
             Dim bestTarget = If(validTargets.Any(), bestFit, Nothing)
 
-            ' Choose to defend or not to pass ball for no suitable target
             Dim target = If(bestTarget IsNot Nothing, bestTarget.Position, m_defendTarget)
-            m_ball.Velocity = (target - m_ball.Position).Norm() * BALL_SPEED * 0.95F
+            m_ball.Velocity = (target - m_ball.Position).Norm() * BALL_SPEED * 0.9F
             m_passCooldown = PASS_COOLDOWN
         End If
     End Sub
 
     Private Sub UpdateMidfielder()
-        ' Distance between ball and midfield initial position
         Dim ballDistToHome = (m_ball.Position - m_player.HomePosition).Mag()
+        Dim targetPos As Vf2d
 
-        If IsBallInOwnHalf() AndAlso ballDistToHome < 150 Then
-            ' For ball in own half field and close, prioritize defensive support
-            TargetPos = m_ball.Position + (m_defendTarget - m_ball.Position).Norm() * 20.0F
-        ElseIf Not IsBallInOwnHalf() AndAlso ballDistToHome < 200 Then
-            ' When ball is in opponent's half, advance to support strikers
-            TargetPos = m_ball.Position + (m_attackTarget - m_ball.Position).Norm() * 20.0F
+        If IsBallInOwnHalf() AndAlso ballDistToHome < 180 Then
+            targetPos = m_ball.Position + (m_defendTarget - m_ball.Position).Norm() * 25.0F
+        ElseIf Not IsBallInOwnHalf() AndAlso ballDistToHome < 220 Then
+            targetPos = m_ball.Position + (m_attackTarget - m_ball.Position).Norm() * 25.0F
         Else
-            ' When ball is far away, return to exact home position
-            TargetPos = m_player.HomePosition
+            targetPos = m_player.HomePosition
         End If
-        TargetPos = AvoidTeammates(TargetPos)
 
-        ' Limit target position not exceeding midfield activity area (avoid running too far)
-        Dim midfieldLeft = If(m_player.Team = 0, FIELD_LEFT + 150, FIELD_LEFT + 300)
-        Dim midfieldRight = If(m_player.Team = 0, FIELD_RIGHT - 300, FIELD_RIGHT - 150)
-        TargetPos = New Vf2d(
-            Math.Clamp(TargetPos.x, midfieldLeft, midfieldRight),
-            Math.Clamp(TargetPos.y, FIELD_TOP + 50, FIELD_BOTTOM - 50)
-        ) ' Avoid touch of edges
+        targetPos = AvoidTeammates(targetPos)
 
-        ' Movement logic for midfielders (at normal speed)
+        Dim midfieldLeft = If(m_player.Team = 0, FIELD_LEFT + 120, FIELD_LEFT + 280)
+        Dim midfieldRight = If(m_player.Team = 0, FIELD_RIGHT - 280, FIELD_RIGHT - 120)
+        targetPos = New Vf2d(
+            Math.Clamp(targetPos.x, midfieldLeft, midfieldRight),
+            Math.Clamp(targetPos.y, FIELD_TOP + 30, FIELD_BOTTOM - 30)
+        )
+
+        TargetPos = targetPos
+
         Dim dir = (TargetPos - m_player.Position).Norm()
-        m_player.Velocity = dir * PLAYER_SPEED
-        UpdateMovementState(dir)
+        Dim distToTarget = (TargetPos - m_player.Position).Mag()
 
-        ' Logic optimization: prioritize pass to the better teammate (not only passing
-        ' to the strikers)
+        If distToTarget > 5 Then
+            Dim speed = PLAYER_SPEED * 0.95F
+            m_player.Velocity = dir * speed
+            UpdateMovementState(dir)
+        Else
+            m_player.Velocity = New Vf2d(0, 0)
+            m_player.IsMoving = False
+        End If
+
         If IsValidPass AndAlso (m_player.Position - m_ball.Position).Mag < KICK_RANGE Then
-            ' Screen out distance suitable targets (exclude too near and too far)
             Dim validTargets = From p In m_teammates
+                               Where p.PositionType <> PlayerPosition.Goalkeeper
                                Let dist = (p.Position - m_player.Position).Mag()
-                               Where dist > 30.0F AndAlso dist < 150.0F
-                               Select p ' Select 30-150 pixels within range
+                               Where dist > 35.0F AndAlso dist < 160.0F
+                               Select p
 
-            ' From valid targets find best pass object (nearest to opponent's goal)
             Dim bestFit = Aggregate p In validTargets
                               Order By (m_attackTarget - p.Position).Mag()
                                   Into FirstOrDefault()
             Dim bestTarget = If(validTargets.Any(), bestFit, Nothing)
 
-            ' For no valid target to evade, choose to defend or not to pass ball
             Dim target = If(bestTarget IsNot Nothing, bestTarget.Position, m_defendTarget)
             m_ball.Velocity = (target - m_ball.Position).Norm() * BALL_SPEED * 0.95F
             m_passCooldown = PASS_COOLDOWN
@@ -265,31 +271,73 @@ Friend Class AIController
     End Sub
 
     Private Sub UpdateStriker()
-        ' Always chase ball or run toward opponent's goal
-        If (m_ball.Position - m_attackTarget).Mag < 200 Then
-            TargetPos = m_ball.Position ' Chase ball when near goal
+        Dim targetPos As Vf2d
+        Dim distToGoal = (m_ball.Position - m_attackTarget).Mag()
+
+        If distToGoal < 200 Then
+            Dim interceptPoint = CalculateInterceptPoint()
+            targetPos = If(interceptPoint <> Nothing, interceptPoint, m_ball.Position)
         Else
-            ' Otherwise run toward opponent's penalty area
-            TargetPos = New Vf2d(
-                If(m_player.Team = 0, FIELD_RIGHT - PENALTY_AREA_WIDTH - 10,
-                   FIELD_LEFT + PENALTY_AREA_WIDTH),
-                m_ball.Position.y
-            )
+            Dim strikerX = If(m_player.Team = 0, FIELD_RIGHT - PENALTY_AREA_WIDTH - 15,
+                              FIELD_LEFT + PENALTY_AREA_WIDTH + 15)
+            Dim strikerY = m_ball.Position.y
+            targetPos = New Vf2d(strikerX, strikerY)
         End If
-        TargetPos = AvoidTeammates(TargetPos)
 
-        ' Movement logic for strikers (at faster speed)
+        targetPos = AvoidTeammates(targetPos)
+        targetPos = New Vf2d(
+            Math.Clamp(targetPos.x, FIELD_LEFT + 50, FIELD_RIGHT - 50),
+            Math.Clamp(targetPos.y, FIELD_TOP + 15, FIELD_BOTTOM - 15)
+        )
+
+        TargetPos = targetPos
+
         Dim dir = (TargetPos - m_player.Position).Norm()
-        m_player.Velocity = dir * (PLAYER_SPEED * 1.05F)
-        UpdateMovementState(dir)
+        Dim distToTarget = (TargetPos - m_player.Position).Mag()
 
-        ' Prioritize shooting at goal
+        If distToTarget > 5 Then
+            Dim speed = PLAYER_SPEED * 1.05F
+            m_player.Velocity = dir * speed
+            UpdateMovementState(dir)
+        Else
+            m_player.Velocity = New Vf2d(0, 0)
+            m_player.IsMoving = False
+        End If
+
         If IsValidPass AndAlso (m_player.Position - m_ball.Position).Mag < KICK_RANGE Then
-            m_ball.Velocity = (m_attackTarget - m_ball.Position).Norm() * BALL_SPEED * 1.05F
-            ' Ball's shooting faster
+            Dim distToAttackTarget = (m_ball.Position - m_attackTarget).Mag()
+            
+            If distToAttackTarget < 150 Then
+                m_ball.Velocity = (m_attackTarget - m_ball.Position).Norm() * BALL_SPEED * 1.1F
+            Else
+                Dim validTargets = From p In m_teammates
+                                   Where p.PositionType = PlayerPosition.Striker
+                                   Let dist = (p.Position - m_player.Position).Mag()
+                                   Where dist > 25.0F AndAlso dist < 120.0F
+                                   Select p
+
+                Dim bestFit = Aggregate p In validTargets
+                                  Order By (m_attackTarget - p.Position).Mag()
+                                      Into FirstOrDefault()
+                Dim bestTarget = If(validTargets.Any(), bestFit, Nothing)
+
+                Dim target = If(bestTarget IsNot Nothing, bestTarget.Position, m_attackTarget)
+                m_ball.Velocity = (target - m_ball.Position).Norm() * BALL_SPEED * 0.95F
+            End If
             m_passCooldown = PASS_COOLDOWN
         End If
     End Sub
+
+    Private Function CalculateInterceptPoint() As Vf2d
+        Dim ballFuturePos = m_ball.Position + m_ball.Velocity * 2.0F
+        Dim distToBall = (m_player.Position - m_ball.Position).Mag()
+        Dim distToFuture = (m_player.Position - ballFuturePos).Mag()
+
+        If distToFuture < distToBall AndAlso m_ball.Velocity.Mag() > 5 Then
+            Return ballFuturePos
+        End If
+        Return Nothing
+    End Function
 
     Private Sub UpdateMovementState(dir As Vf2d)
         If dir.Mag <= 0.1F Then
@@ -329,17 +377,26 @@ Friend Class AIController
 
     Private Function AvoidTeammates(originalTarget As Vf2d) As Vf2d
         Dim adjustedTarget = originalTarget
-        Dim avoidRange = 20.0F ' Minimum team mate spacing (20 pixels)
+        Dim avoidRange = 22.0F
+        Dim maxAvoidDistance = 30.0F
+
         For Each mate In m_teammates
-            ' Calculate the distance to mate
             Dim distToMate = (adjustedTarget - mate.Position).Mag()
-            If distToMate < avoidRange Then
-                ' Move vertically to the line perpendicular to the mate's line,
-                ' to avoid overlapping
-                Dim awayDir = (adjustedTarget - mate.Position).Norm().Perp()
-                adjustedTarget += awayDir * (avoidRange - distToMate)
+            If distToMate < avoidRange AndAlso distToMate > 0 Then
+                Dim awayDir = (adjustedTarget - mate.Position).Norm()
+                Dim avoidDist = Math.Min(avoidRange - distToMate, maxAvoidDistance)
+                
+                Dim perpDir = awayDir.Perp()
+                Dim randomFactor = If(Rnd() > 0.5, 1.0F, -1.0F)
+                adjustedTarget += perpDir * avoidDist * randomFactor
             End If
         Next mate
+
+        adjustedTarget = New Vf2d(
+            Math.Clamp(adjustedTarget.x, FIELD_LEFT + 10, FIELD_RIGHT - 20),
+            Math.Clamp(adjustedTarget.y, FIELD_TOP + 10, FIELD_BOTTOM - 10)
+        )
+
         Return adjustedTarget
     End Function
 End Class
